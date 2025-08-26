@@ -19,16 +19,16 @@ class MyBot(discord.Client):
         self.warnings = {}
 
     async def setup_hook(self):
-        guild = discord.Object(id=GUILD_ID)
-        await self.tree.sync(guild=guild)
-        print("✅ Slash commands synced to the guild!")
+        # 全域同步 Slash Commands
+        await self.tree.sync()
+        print("✅ 全域 Slash commands 已同步!")
 
 bot = MyBot()
 
 # --------------------------- Bot 狀態 ---------------------------
 @bot.event
 async def on_ready():
-    await bot.change_presence(status=discord.Status.idle, activity=discord.Game('HFG 機器人 · 照亮你的生活'))
+    await bot.change_presence(status=discord.Status.idle, activity=discord.Game('HFG 機器人 ・ 照亮你的生活'))
     print(f'Logged in as {bot.user}')
 
 # --------------------------- 權限檢查 ---------------------------
@@ -37,17 +37,59 @@ def is_admin():
         return any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles)
     return app_commands.check(predicate)
 
-# --------------------------- 基礎指令 ---------------------------
+# --------------------------- 測試指令 ---------------------------
 @bot.tree.command(name='ping', description='測試指令')
 async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message('Pong!')
+    await interaction.response.send_message('Pong! ✅')
 
 @bot.tree.command(name='help', description='顯示可用指令列表')
 async def help_cmd(interaction: discord.Interaction):
     cmds = [c.name for c in bot.tree.get_commands()]
     await interaction.response.send_message('📜 可用指令:\n' + '\n'.join([f'/{c}' for c in cmds]), ephemeral=True)
 
-# --------------------------- 管理/公告/私訊指令 ---------------------------
+# --------------------------- 管理功能 ---------------------------
+@bot.tree.command(name='clear', description='清除訊息')
+@is_admin()
+async def clear(interaction: discord.Interaction, amount: int):
+    await interaction.channel.purge(limit=amount)
+    await interaction.response.send_message(f'🧹 已清除 {amount} 則訊息', ephemeral=True)
+
+@bot.tree.command(name='lock_channel', description='鎖定頻道')
+@is_admin()
+async def lock_channel(interaction: discord.Interaction):
+    overwrite = interaction.channel.overwrites_for(interaction.guild.default_role)
+    overwrite.send_messages = False
+    await interaction.channel.set_permissions(interaction.guild.default_role, overwrite=overwrite)
+    await interaction.response.send_message('🔒 頻道已鎖定')
+
+@bot.tree.command(name='unlock_channel', description='解鎖頻道')
+@is_admin()
+async def unlock_channel(interaction: discord.Interaction):
+    overwrite = interaction.channel.overwrites_for(interaction.guild.default_role)
+    overwrite.send_messages = True
+    await interaction.channel.set_permissions(interaction.guild.default_role, overwrite=overwrite)
+    await interaction.response.send_message('🔓 頻道已解鎖')
+
+@bot.tree.command(name='kick', description='踢出成員')
+@is_admin()
+async def kick(interaction: discord.Interaction, member: discord.Member, reason: str = "無理由"):
+    await member.kick(reason=reason)
+    await interaction.response.send_message(f'👢 {member} 已被踢出，理由: {reason}')
+
+@bot.tree.command(name='ban', description='封鎖成員')
+@is_admin()
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "無理由"):
+    await member.ban(reason=reason)
+    await interaction.response.send_message(f'⛔ {member} 已被封鎖，理由: {reason}')
+
+@bot.tree.command(name='unban', description='解除封鎖成員')
+@is_admin()
+async def unban(interaction: discord.Interaction, user_id: int):
+    user = await bot.fetch_user(user_id)
+    await interaction.guild.unban(user)
+    await interaction.response.send_message(f'✅ {user} 已解除封鎖')
+
+# --------------------------- 公告功能 ---------------------------
 @bot.tree.command(name='announce', description='管理員發布公告')
 @is_admin()
 async def announce(interaction: discord.Interaction, message: str):
@@ -58,6 +100,7 @@ async def announce(interaction: discord.Interaction, message: str):
             continue
     await interaction.response.send_message('公告已發佈。', ephemeral=True)
 
+# --------------------------- 私訊功能 ---------------------------
 @bot.tree.command(name='dm_user', description='私訊特定用戶')
 @is_admin()
 async def dm_user(interaction: discord.Interaction, member: discord.Member, message: str):
@@ -67,47 +110,7 @@ async def dm_user(interaction: discord.Interaction, member: discord.Member, mess
     except discord.Forbidden:
         await interaction.response.send_message('無法私訊此用戶。', ephemeral=True)
 
-@bot.tree.command(name='warn_user', description='對用戶發出警告')
-@is_admin()
-async def warn_user(interaction: discord.Interaction, member: discord.Member, reason: str):
-    bot.warnings.setdefault(member.id, 0)
-    bot.warnings[member.id] += 1
-    await interaction.response.send_message(f'{member} 已被警告 ({bot.warnings[member.id]} 次) 原因: {reason}')
-    try:
-        await member.send(f'⚠ 你已被警告 ({bot.warnings[member.id]} 次) 原因: {reason}')
-    except:
-        pass
-
-@bot.tree.command(name='unwarn_user', description='解除用戶警告')
-@is_admin()
-async def unwarn_user(interaction: discord.Interaction, member: discord.Member):
-    bot.warnings[member.id] = 0
-    await interaction.response.send_message(f'{member} 的警告已解除。')
-
-@bot.tree.command(name='kick_user', description='踢出用戶')
-@is_admin()
-async def kick_user(interaction: discord.Interaction, member: discord.Member, reason: str):
-    await member.kick(reason=reason)
-    await interaction.response.send_message(f'{member} 已被踢出，原因: {reason}')
-
-@bot.tree.command(name='ban_user', description='封鎖用戶')
-@is_admin()
-async def ban_user(interaction: discord.Interaction, member: discord.Member, reason: str):
-    await member.ban(reason=reason)
-    await interaction.response.send_message(f'{member} 已被封鎖，原因: {reason}')
-
-@bot.tree.command(name='unban_user', description='解除封鎖用戶')
-@is_admin()
-async def unban_user(interaction: discord.Interaction, member_name: str):
-    banned_users = await interaction.guild.bans()
-    for ban_entry in banned_users:
-        if ban_entry.user.name == member_name:
-            await interaction.guild.unban(ban_entry.user)
-            await interaction.response.send_message(f'{member_name} 已解除封鎖')
-            return
-    await interaction.response.send_message(f'找不到 {member_name} 的封鎖紀錄')
-
-# --------------------------- 娛樂/互動功能 ---------------------------
+# --------------------------- 娛樂功能 ---------------------------
 @bot.tree.command(name='coinflip', description='擲硬幣')
 async def coinflip(interaction: discord.Interaction):
     await interaction.response.send_message(f'🪙 硬幣結果: {random.choice(["正面","反面"])}')
@@ -133,73 +136,46 @@ async def create_ticket(interaction: discord.Interaction, reason: str):
     await ticket.send(f'{interaction.user.mention} 已開啟客服單，原因: {reason}')
     await interaction.response.send_message(f'✅ 已建立客服單: {ticket.mention}', ephemeral=True)
 
-# --------------------------- 擴展娛樂/互動功能 ---------------------------
-@bot.tree.command(name='random_joke', description='隨機笑話')
-async def random_joke(interaction: discord.Interaction):
-    jokes = ['笑話1','笑話2','笑話3','笑話4','笑話5']
-    await interaction.response.send_message(random.choice(jokes))
+# --------------------------- 額外娛樂 ---------------------------
+@bot.tree.command(name='hug', description='給予擁抱')
+async def hug(interaction: discord.Interaction, member: discord.Member):
+    await interaction.response.send_message(f'🤗 {interaction.user.mention} 擁抱了 {member.mention}!')
 
-@bot.tree.command(name='daily_fortune', description='今日運勢')
-async def daily_fortune(interaction: discord.Interaction):
-    fortunes = ['大吉','中吉','小吉','凶']
-    await interaction.response.send_message(f'🎴 今日運勢: {random.choice(fortunes)}')
+@bot.tree.command(name='poll', description='建立投票')
+async def poll(interaction: discord.Interaction, question: str, option1: str, option2: str):
+    embed = discord.Embed(title=f'📊 {question}', description=f'1️⃣ {option1}\n2️⃣ {option2}', color=0x00ff00)
+    message = await interaction.channel.send(embed=embed)
+    await message.add_reaction('1️⃣')
+    await message.add_reaction('2️⃣')
+    await interaction.response.send_message('投票已建立!', ephemeral=True)
 
-@bot.tree.command(name='inspire', description='隨機名言')
-async def inspire(interaction: discord.Interaction):
-    quotes = ['名言1','名言2','名言3','名言4','名言5']
-    await interaction.response.send_message(f'💡 {random.choice(quotes)}')
+@bot.tree.command(name='remind', description='提醒功能 (秒)')
+async def remind(interaction: discord.Interaction, time: int, reminder: str):
+    await interaction.response.send_message(f'⏰ 好的，我會在 {time} 秒後提醒你: {reminder}', ephemeral=True)
+    await asyncio.sleep(time)
+    await interaction.followup.send(f'⏰ 提醒: {reminder}')
 
-@bot.tree.command(name='number_guess', description='猜數字遊戲')
-async def number_guess(interaction: discord.Interaction, guess: int):
-    answer = random.randint(1,20)
-    result = '正確!' if guess == answer else f'錯誤，答案是 {answer}'
-    await interaction.response.send_message(result)
+@bot.tree.command(name='say', description='讓機器人說話')
+async def say(interaction: discord.Interaction, message: str):
+    await interaction.channel.send(f'{message}')
+    await interaction.response.send_message('✅ 已代發訊息', ephemeral=True)
 
-@bot.tree.command(name='magic_8ball', description='8球占卜')
-async def magic_8ball(interaction: discord.Interaction, question: str):
-    responses = ['會','不會','不確定','問問再說','肯定會']
-    await interaction.response.send_message(f'🎱 問題: {question}\n答案: {random.choice(responses)}')
+@bot.tree.command(name='server_info', description='查看伺服器資訊')
+async def server_info(interaction: discord.Interaction):
+    guild = interaction.guild
+    embed = discord.Embed(title=f'{guild.name} 資訊', color=0x3498db)
+    embed.add_field(name='👑 擁有者', value=guild.owner, inline=False)
+    embed.add_field(name='👥 成員數', value=guild.member_count, inline=False)
+    embed.add_field(name='📅 建立時間', value=guild.created_at.strftime('%Y-%m-%d'), inline=False)
+    await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name='flip_card', description='翻牌遊戲')
-async def flip_card(interaction: discord.Interaction):
-    suits = ['♠','♥','♦','♣']
-    ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K']
-    await interaction.response.send_message(f'🃏 你翻到: {random.choice(ranks)}{random.choice(suits)}')
-
-@bot.tree.command(name='roll_multiple_dice', description='擲多顆骰子')
-async def roll_multiple_dice(interaction: discord.Interaction, dice: int, sides: int):
-    results = [str(random.randint(1,sides)) for _ in range(dice)]
-    await interaction.response.send_message(f'🎲 擲骰結果: {", ".join(results)}')
-
-@bot.tree.command(name='rock_paper_scissors', description='剪刀石頭布')
-async def rock_paper_scissors(interaction: discord.Interaction, choice: str):
-    choices = ['剪刀','石頭','布']
-    bot_choice = random.choice(choices)
-    result = '平手' if choice == bot_choice else ('你贏了' if (choice=='剪刀' and bot_choice=='布') or (choice=='石頭' and bot_choice=='剪刀') or (choice=='布' and bot_choice=='石頭') else '你輸了')
-    await interaction.response.send_message(f'你選 {choice}, 我選 {bot_choice} → {result}')
-
-@bot.tree.command(name='roll_d20', description='擲20面骰')
-async def roll_d20(interaction: discord.Interaction):
-    await interaction.response.send_message(f'🎲 你擲到: {random.randint(1,20)}')
-
-@bot.tree.command(name='fortune_cookie', description='幸運籤')
-async def fortune_cookie(interaction: discord.Interaction):
-    fortunes = ['今天會遇到好事','小心錢財','愛情運佳','工作順利','要注意健康']
-    await interaction.response.send_message(f'🥠 幸運籤: {random.choice(fortunes)}')
-
-@bot.tree.command(name='random_fact', description='隨機知識')
-async def random_fact(interaction: discord.Interaction):
-    facts = ['章魚有三個心臟','貓可以聽到超過64kHz','香蕉是漿果','蜂蜜不會壞','水母可以長生不老']
-    await interaction.response.send_message(f'📚 知識: {random.choice(facts)}')
-
-@bot.tree.command(name='choose', description='幫你做決定')
-async def choose(interaction: discord.Interaction, options: str):
-    option_list = options.split(',')
-    await interaction.response.send_message(f'🎯 我選: {random.choice(option_list)}')
-
-@bot.tree.command(name='echo', description='重複你的訊息')
-async def echo(interaction: discord.Interaction, message: str):
-    await interaction.response.send_message(f'💬 {message}')
+@bot.tree.command(name='userinfo', description='查看用戶資訊')
+async def userinfo(interaction: discord.Interaction, member: discord.Member):
+    embed = discord.Embed(title=f'{member} 的資訊', color=0x95a5a6)
+    embed.add_field(name='🆔 ID', value=member.id, inline=False)
+    embed.add_field(name='📅 加入伺服器', value=member.joined_at.strftime('%Y-%m-%d'), inline=False)
+    embed.add_field(name='📝 建立帳號', value=member.created_at.strftime('%Y-%m-%d'), inline=False)
+    await interaction.response.send_message(embed=embed)
 
 # --------------------------- 啟動 Bot ---------------------------
 bot.run(TOKEN)
