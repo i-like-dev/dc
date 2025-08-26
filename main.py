@@ -20,7 +20,7 @@ guild = discord.Object(id=GUILD_ID)
 @bot.event
 async def on_ready():
     await bot.tree.sync(guild=guild)
-    await bot.change_presence(status=discord.Status.idle, activity=discord.Game('HFG機器人 · 照亮你的生活'))
+    await bot.change_presence(status=discord.Status.idle, activity=discord.Game('暑假作業'))
     print(f'Logged in as {bot.user}')
 
 # --------------------------- 權限檢查 ---------------------------
