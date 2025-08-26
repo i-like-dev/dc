@@ -18,10 +18,11 @@ WARN_FILE = 'warnings.json'
 class MyBot(discord.Client):
     def __init__(self):
         intents = discord.Intents.all()
-        super().__init__(intents=intents, loop=asyncio.get_event_loop())
+        super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
         self.levels = {}
         self.warnings = {}
+        # 載入 JSON
         try:
             with open(LEVEL_FILE,'r',encoding='utf-8') as f:
                 self.levels = json.load(f)
@@ -179,20 +180,5 @@ async def truth_or_dare(interaction: discord.Interaction):
 async def hug(interaction: discord.Interaction, member: discord.Member):
     await interaction.response.send_message(f'🤗 {interaction.user.mention} 擁抱了 {member.mention}!')
 
-@bot.tree.command(name='8ball', description='隨機回答問題')
-async def eight_ball(interaction: discord.Interaction, question: str):
-    responses = ["是的", "不是", "可能", "再問一次", "絕對是", "我不確定"]
-    await interaction.response.send_message(f'🎱 問題: {question}\n答案: {random.choice(responses)}')
-
-@bot.tree.command(name='joke', description='隨機笑話')
-async def joke(interaction: discord.Interaction):
-    jokes = ["我昨天去看牙醫，他說我需要放鬆，所以他給我了一張帳單。", "電腦最怕什麼？當機！", "為什麼數學課很吵？因為大家都在講題。"]
-    await interaction.response.send_message(f'😂 {random.choice(jokes)}')
-
-@bot.tree.command(name='quote', description='隨機勵志語錄')
-async def quote(interaction: discord.Interaction):
-    quotes = ["成功不是終點，失敗也不是末日，最重要的是勇氣。", "保持微笑，世界會因你而更美好。", "每天進步一點點，就是成功的一大步。"]
-    await interaction.response.send_message(f'💡 {random.choice(quotes)}')
-
 # --------------------------- 啟動 Bot ---------------------------
-bot.run(TOKEN, host='0.0.0.0')
+bot.run(TOKEN)
