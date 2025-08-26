@@ -13,11 +13,11 @@ ADMIN_ROLE_ID = 1227938559130861578
 # --------------------------- Bot 設定 ---------------------------
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='/', intents=intents, help_command=None)
+guild = discord.Object(id=GUILD_ID)
 
 # --------------------------- Bot 狀態設定 ---------------------------
 @bot.event
 async def on_ready():
-    guild = discord.Object(id=GUILD_ID)
     await bot.tree.sync(guild=guild)
     await bot.change_presence(status=discord.Status.idle, activity=discord.Game('暑假作業'))
     print(f'Logged in as {bot.user}')
@@ -97,19 +97,24 @@ async def dm_user(interaction: discord.Interaction, member: discord.Member, mess
         await interaction.response.send_message('無法私訊此用戶。', ephemeral=True)
 
 # --------------------------- 娛樂/工具/互動功能（手動添加不重複） ---------------------------
+# 添加多種獨立指令，每個功能不同
 @bot.tree.command(name='coinflip', description='擲硬幣')
 async def coinflip(interaction: discord.Interaction):
     result = random.choice(['正面','反面'])
     await interaction.response.send_message(f'🪙 硬幣結果: {result}')
 
 @bot.tree.command(name='roll_dice', description='擲骰子')
-async def roll_dice(interaction: discord.Interaction, sides: int = 6):
+async def roll_dice(interaction: discord.Interaction, sides: int):
     result = random.randint(1, sides)
     await interaction.response.send_message(f'🎲 骰子結果: {result}')
 
 @bot.tree.command(name='random_joke', description='隨機笑話')
 async def random_joke(interaction: discord.Interaction):
-    jokes = ['為什麼電腦冷？因為它有風扇','為什麼程式員喜歡戶外？因為他們討厭Bug']
+    jokes = [
+        '為什麼電腦冷？因為它有風扇',
+        '為什麼程式員喜歡戶外？因為他們討厭Bug',
+        '為什麼貓咪不愛程式？因為怕Bug'  
+    ]
     await interaction.response.send_message(random.choice(jokes))
 
 @bot.tree.command(name='math_quiz', description='數學測驗')
@@ -132,7 +137,7 @@ async def fortune(interaction: discord.Interaction):
     await interaction.response.send_message(f'🔮 今日運勢: {random.choice(fortunes)}')
 
 @bot.tree.command(name='generate_password', description='生成隨機密碼')
-async def generate_password(interaction: discord.Interaction, length: int = 12):
+async def generate_password(interaction: discord.Interaction, length: int):
     chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()'
     password = ''.join(random.choice(chars) for _ in range(length))
     await interaction.response.send_message(f'🔑 隨機密碼: {password}')
@@ -140,14 +145,9 @@ async def generate_password(interaction: discord.Interaction, length: int = 12):
 # --------------------------- /help 指令 ---------------------------
 @bot.tree.command(name='help', description='顯示可用指令列表')
 async def help_cmd(interaction: discord.Interaction):
-    all_commands = [
-        'grant_admin_access','revoke_admin_access','announce','dm_user',
-        'coinflip','roll_dice','random_joke','math_quiz','reverse_text','random_color','fortune','generate_password'
-    ]
-    help_text='\n'.join([f'/{cmd}' for cmd in all_commands])
+    cmds = [c.name for c in bot.tree.get_commands()]  # 自動列出所有 slash 指令
+    help_text='\n'.join([f'/{name}' for name in cmds])
     await interaction.response.send_message(f'📜 可用指令:\n{help_text}', ephemeral=True)
 
 # --------------------------- 啟動 Bot ---------------------------
 bot.run(TOKEN)
-
-# 注意: Flask 不再使用，Render 上直接運行 Bot 即可，不需額外依賴
