@@ -1,6 +1,5 @@
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
 import asyncio
 import random
 import os
@@ -12,38 +11,44 @@ TOKEN = os.environ.get('DISCORD_TOKEN')
 GUILD_ID = 1227929105018912839
 ADMIN_ROLE_ID = 1227938559130861578
 ANNOUNCE_CHANNEL_ID = 1228485979090718720
-
 LEVEL_FILE = 'levels.json'
 WARN_FILE = 'warnings.json'
-CURRENCY_FILE = 'currency.json'
 
 # --------------------------- Bot ---------------------------
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix='!', intents=intents)
-tree = bot.tree
+class MyBot(discord.Client):
+    def __init__(self):
+        intents = discord.Intents.all()
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
+        self.levels = {}
+        self.warnings = {}
+        try:
+            with open(LEVEL_FILE,'r',encoding='utf-8') as f:
+                self.levels = json.load(f)
+        except:
+            self.levels = {}
+        try:
+            with open(WARN_FILE,'r',encoding='utf-8') as f:
+                self.warnings = json.load(f)
+        except:
+            self.warnings = {}
 
-# --------------------------- JSON 輔助 ---------------------------
-def load_json(filename):
-    if not os.path.exists(filename):
-        return {}
-    with open(filename,'r',encoding='utf-8') as f:
-        return json.load(f)
+    async def setup_hook(self):
+        guild = discord.Object(id=GUILD_ID)
+        await self.tree.sync(guild=guild)
+        print("✅ Slash commands synced to the guild!")
 
-def save_json(filename, data):
-    with open(filename,'w',encoding='utf-8') as f:
-        json.dump(data,f,ensure_ascii=False,indent=2)
+    def save_json(self, filename, data):
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
-levels = load_json(LEVEL_FILE)
-warnings = load_json(WARN_FILE)
-currency = load_json(CURRENCY_FILE)
+bot = MyBot()
 
 # --------------------------- Bot 狀態 ---------------------------
 @bot.event
 async def on_ready():
     await bot.change_presence(status=discord.Status.online, activity=discord.Game('HFG 機器人 ・ 照亮你的生活'))
-    guild = discord.Object(id=GUILD_ID)
-    await tree.sync(guild=guild)
-    print(f'Logged in as {bot.user} - Slash commands synced!')
+    print(f'Logged in as {bot.user}')
 
 # --------------------------- 權限檢查 ---------------------------
 def is_admin():
@@ -56,62 +61,54 @@ def is_admin():
 async def on_message(message):
     if message.author.bot:
         return
-
     uid = str(message.author.id)
-    levels.setdefault(uid, {"xp":0,"level":1})
-    levels[uid]["xp"] += 10
-    xp = levels[uid]["xp"]
-    level = levels[uid]["level"]
+    bot.levels.setdefault(uid, {"xp":0, "level":1})
+    bot.levels[uid]["xp"] += 10
+    xp = bot.levels[uid]["xp"]
+    level = bot.levels[uid]["level"]
     if xp >= level*100:
-        levels[uid]["level"] += 1
+        bot.levels[uid]["level"] += 1
         await message.channel.send(f'🎉 {message.author.mention} 升到等級 {level+1}!')
-    save_json(LEVEL_FILE, levels)
+    bot.save_json(LEVEL_FILE, bot.levels)
     await bot.process_commands(message)
 
-@tree.command(name='level', description='查看等級')
+@bot.tree.command(name='level', description='查看等級', guild=discord.Object(id=GUILD_ID))
 async def level(interaction: discord.Interaction, member: discord.Member = None):
     member = member or interaction.user
     uid = str(member.id)
-    data = levels.get(uid, {"xp":0,"level":1})
+    data = bot.levels.get(uid, {"xp":0,"level":1})
     await interaction.response.send_message(f'⭐ {member.mention} 等級: {data["level"]}, XP: {data["xp"]}')
 
 # --------------------------- 警告系統 ---------------------------
 async def warn_user(member: discord.Member, reason: str, moderator: discord.Member):
     uid = str(member.id)
-    warnings[uid] = warnings.get(uid, 0) + 1
-    save_json(WARN_FILE, warnings)
-    await member.send(f'⚠️ 你被警告 ({warnings[uid]} 次)，原因: {reason}')
-    if warnings[uid] >=5:
+    bot.warnings[uid] = bot.warnings.get(uid, 0) + 1
+    bot.save_json(WARN_FILE, bot.warnings)
+    await member.send(f'⚠️ 你被警告 ({bot.warnings[uid]} 次)，原因: {reason}')
+    if bot.warnings[uid] >= 5:
         try:
             await member.edit(timed_out_until=datetime.utcnow()+timedelta(minutes=10))
             await member.send('⏱ 你已被禁言 10 分鐘')
-            warnings[uid] = 0
-            save_json(WARN_FILE, warnings)
+            bot.warnings[uid] = 0
+            bot.save_json(WARN_FILE, bot.warnings)
         except discord.Forbidden:
             pass
 
-@tree.command(name='warn', description='警告用戶')
+@bot.tree.command(name='warn', description='警告用戶', guild=discord.Object(id=GUILD_ID))
 @is_admin()
 async def warn(interaction: discord.Interaction, member: discord.Member, reason: str):
     await warn_user(member, reason, interaction.user)
-    await interaction.response.send_message(f'✅ 已警告 {member.display_name} ({warnings[str(member.id)]} 次)', ephemeral=True)
-
-@tree.command(name='warnings', description='查看警告紀錄')
-@is_admin()
-async def check_warnings(interaction: discord.Interaction, member: discord.Member):
-    uid = str(member.id)
-    count = warnings.get(uid,0)
-    await interaction.response.send_message(f'⚠️ {member.display_name} 被警告次數: {count}')
+    await interaction.response.send_message(f'✅ 已警告 {member.display_name} ({bot.warnings[str(member.id)]} 次)', ephemeral=True)
 
 # --------------------------- 權限管理 ---------------------------
-@tree.command(name='grant_admin', description='給予管理權限')
+@bot.tree.command(name='grant_admin', description='給予管理權限', guild=discord.Object(id=GUILD_ID))
 @is_admin()
 async def grant_admin(interaction: discord.Interaction, member: discord.Member):
     role = discord.utils.get(interaction.guild.roles, id=ADMIN_ROLE_ID)
     await member.add_roles(role)
     await interaction.response.send_message(f'✅ {member.display_name} 已獲得管理權限', ephemeral=True)
 
-@tree.command(name='revoke_admin', description='撤銷管理權限')
+@bot.tree.command(name='revoke_admin', description='撤銷管理權限', guild=discord.Object(id=GUILD_ID))
 @is_admin()
 async def revoke_admin(interaction: discord.Interaction, member: discord.Member):
     role = discord.utils.get(interaction.guild.roles, id=ADMIN_ROLE_ID)
@@ -119,7 +116,7 @@ async def revoke_admin(interaction: discord.Interaction, member: discord.Member)
     await interaction.response.send_message(f'✅ {member.display_name} 已撤銷管理權限', ephemeral=True)
 
 # --------------------------- 公告功能 ---------------------------
-@tree.command(name='announce', description='管理員發布公告')
+@bot.tree.command(name='announce', description='管理員發布公告', guild=discord.Object(id=GUILD_ID))
 @is_admin()
 async def announce(interaction: discord.Interaction, title: str, content: str):
     channel = bot.get_channel(ANNOUNCE_CHANNEL_ID)
@@ -128,8 +125,8 @@ async def announce(interaction: discord.Interaction, title: str, content: str):
     await channel.send(embed=embed)
     await interaction.response.send_message('✅ 公告已發佈。', ephemeral=True)
 
-# --------------------------- 私訊 ---------------------------
-@tree.command(name='dm_user', description='私訊特定用戶')
+# --------------------------- 私訊功能 ---------------------------
+@bot.tree.command(name='dm_user', description='私訊特定用戶', guild=discord.Object(id=GUILD_ID))
 @is_admin()
 async def dm_user(interaction: discord.Interaction, member: discord.Member, message: str):
     try:
@@ -139,7 +136,7 @@ async def dm_user(interaction: discord.Interaction, member: discord.Member, mess
         await interaction.response.send_message('無法私訊此用戶。', ephemeral=True)
 
 # --------------------------- 客服單 ---------------------------
-@tree.command(name='create_ticket', description='開客服單')
+@bot.tree.command(name='create_ticket', description='開客服單', guild=discord.Object(id=GUILD_ID))
 async def create_ticket(interaction: discord.Interaction, reason: str):
     category = discord.utils.get(interaction.guild.categories, name='客服單')
     if not category:
@@ -157,89 +154,80 @@ async def create_ticket(interaction: discord.Interaction, reason: str):
     await ticket.send(f'{interaction.user.mention} 已開啟客服單，原因: {reason}', view=view)
     await interaction.response.send_message(f'✅ 已建立客服單: {ticket.mention}', ephemeral=True)
 
-# --------------------------- 娛樂互動 ---------------------------
+# --------------------------- 娛樂/互動功能 ---------------------------
 fun_prompts = {
     'truth': ['你最怕什麼?', '最近一次說謊是什麼?', '有沒有偷偷喜歡過伺服器裡的人?'],
     'dare': ['在公開頻道唱一首歌', '發一張搞笑自拍', '在聊天區說三次"我是豬"']
 }
 
-@tree.command(name='coinflip', description='擲硬幣')
+@bot.tree.command(name='coinflip', description='擲硬幣', guild=discord.Object(id=GUILD_ID))
 async def coinflip(interaction: discord.Interaction):
     await interaction.response.send_message(f'🪙 硬幣結果: {random.choice(["正面","反面"])}')
 
-@tree.command(name='roll_dice', description='擲骰子')
+@bot.tree.command(name='roll_dice', description='擲骰子', guild=discord.Object(id=GUILD_ID))
 async def roll_dice(interaction: discord.Interaction, sides: int):
     await interaction.response.send_message(f'🎲 骰子結果: {random.randint(1,sides)}')
 
-@tree.command(name='truth_or_dare', description='真心話大冒險')
+@bot.tree.command(name='truth_or_dare', description='真心話大冒險', guild=discord.Object(id=GUILD_ID))
 async def truth_or_dare(interaction: discord.Interaction):
     choice = random.choice(['真心話','大冒險'])
     prompt = random.choice(fun_prompts['truth'] if choice=='真心話' else fun_prompts['dare'])
     await interaction.response.send_message(f'🎲 {choice}: {prompt}')
 
-@tree.command(name='hug', description='給予擁抱')
+@bot.tree.command(name='hug', description='給予擁抱', guild=discord.Object(id=GUILD_ID))
 async def hug(interaction: discord.Interaction, member: discord.Member):
     await interaction.response.send_message(f'🤗 {interaction.user.mention} 擁抱了 {member.mention}!')
 
-@tree.command(name='poll', description='建立投票')
-async def poll(interaction: discord.Interaction, question: str, option1: str, option2: str):
-    embed = discord.Embed(title=f'📊 {question}', description=f'1️⃣ {option1}\n2️⃣ {option2}', color=0x00ff00)
-    message = await interaction.channel.send(embed=embed)
-    await message.add_reaction('1️⃣')
-    await message.add_reaction('2️⃣')
-    await interaction.response.send_message('投票已建立!', ephemeral=True)
+# --------------------------- 新增互動功能 ---------------------------
+eight_ball_responses = ["是的", "不是", "可能吧", "不太可能", "當然！", "我不確定", "再問一次"]
 
-@tree.command(name='8ball', description='隨機回答問題')
+@bot.tree.command(name='8ball', description='問 8ball 一個問題', guild=discord.Object(id=GUILD_ID))
 async def eight_ball(interaction: discord.Interaction, question: str):
-    responses = ["是的", "不是", "可能", "再問一次", "絕對是", "我不確定"]
-    await interaction.response.send_message(f'🎱 問題: {question}\n答案: {random.choice(responses)}')
+    answer = random.choice(eight_ball_responses)
+    await interaction.response.send_message(f'🎱 問題: {question}\n答案: {answer}')
 
-@tree.command(name='joke', description='隨機笑話')
+@bot.tree.command(name='poll', description='建立投票', guild=discord.Object(id=GUILD_ID))
+async def poll(interaction: discord.Interaction, title: str, *options: str):
+    if len(options) < 2:
+        await interaction.response.send_message('❌ 至少提供兩個選項', ephemeral=True)
+        return
+    embed = discord.Embed(title=f'📊 {title}', description='\n'.join(f'{i+1}. {opt}' for i,opt in enumerate(options)), color=discord.Color.green())
+    msg = await interaction.channel.send(embed=embed)
+    emojis = ['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟']
+    for i in range(len(options)):
+        await msg.add_reaction(emojis[i])
+    await interaction.response.send_message('✅ 投票已建立', ephemeral=True)
+
+jokes = [
+    "我告訴我的電腦一個笑話，它笑了…至少它的屏幕亮了起來。",
+    "為什麼程式員不喜歡大自然？因為有太多 bug。",
+    "為什麼 Java 程式員總是戴眼鏡？因為他們不 C#。"
+]
+
+@bot.tree.command(name='joke', description='隨機笑話', guild=discord.Object(id=GUILD_ID))
 async def joke(interaction: discord.Interaction):
-    jokes = ["我昨天去看牙醫，他說我需要放鬆，所以他給我了一張帳單。", "電腦最怕什麼？當機！", "為什麼數學課很吵？因為大家都在講題。"]
     await interaction.response.send_message(f'😂 {random.choice(jokes)}')
 
-@tree.command(name='userinfo', description='查看用戶資訊')
-async def userinfo(interaction: discord.Interaction, member: discord.Member):
-    embed = discord.Embed(title=f'{member.display_name} 的資訊', color=0x95a5a6)
-    embed.add_field(name='🆔 ID', value=member.id, inline=False)
-    embed.add_field(name='📅 加入伺服器', value=member.joined_at.strftime('%Y-%m-%d'), inline=False)
-    embed.add_field(name='📝 建立帳號', value=member.created_at.strftime('%Y-%m-%d'), inline=False)
-    await interaction.response.send_message(embed=embed)
+compliments = [
+    "你今天看起來很棒！",
+    "你的程式碼總是很乾淨！",
+    "你讓伺服器更有趣了！",
+    "你真是一個棒的朋友！"
+]
 
-# --------------------------- 虛擬貨幣 ---------------------------
-@tree.command(name='balance', description='查看虛擬貨幣')
-async def balance(interaction: discord.Interaction, member: discord.Member = None):
+@bot.tree.command(name='compliment', description='隨機讚美', guild=discord.Object(id=GUILD_ID))
+async def compliment(interaction: discord.Interaction, member: discord.Member = None):
     member = member or interaction.user
-    uid = str(member.id)
-    currency.setdefault(uid, 100)
-    save_json(CURRENCY_FILE, currency)
-    await interaction.response.send_message(f'💰 {member.display_name} 餘額: {currency[uid]}')
+    await interaction.response.send_message(f'💖 {member.mention} {random.choice(compliments)}')
 
-@tree.command(name='give', description='轉帳虛擬貨幣')
-async def give(interaction: discord.Interaction, member: discord.Member, amount: int):
-    giver = str(interaction.user.id)
-    receiver = str(member.id)
-    currency.setdefault(giver,100)
-    currency.setdefault(receiver,100)
-    if currency[giver] < amount:
-        await interaction.response.send_message('❌ 餘額不足', ephemeral=True)
-        return
-    currency[giver] -= amount
-    currency[receiver] += amount
-    save_json(CURRENCY_FILE, currency)
-    await interaction.response.send_message(f'✅ {interaction.user.display_name} 已轉 {amount} 給 {member.display_name}')
-
-# --------------------------- 排行榜 ---------------------------
-@tree.command(name='leaderboard', description='查看等級排行榜')
-async def leaderboard(interaction: discord.Interaction):
-    top = sorted(levels.items(), key=lambda x:x[1]["xp"], reverse=True)[:10]
-    msg = ""
-    for i, (uid, data) in enumerate(top,1):
-        user = bot.get_user(int(uid))
-        if user:
-            msg += f'{i}. {user.display_name} - 等級 {data["level"]}, XP {data["xp"]}\n'
-    await interaction.response.send_message(f'🏆 等級排行榜:\n{msg}')
+@bot.tree.command(name='remind', description='設定提醒', guild=discord.Object(id=GUILD_ID))
+async def remind(interaction: discord.Interaction, minutes: int, *, message: str):
+    await interaction.response.send_message(f'⏱ {interaction.user.mention} 我會在 {minutes} 分鐘後提醒你: {message}')
+    await asyncio.sleep(minutes*60)
+    try:
+        await interaction.user.send(f'⏰ 提醒: {message}')
+    except discord.Forbidden:
+        await interaction.channel.send(f'{interaction.user.mention} 提醒: {message}')
 
 # --------------------------- 啟動 ---------------------------
 bot.run(TOKEN)
