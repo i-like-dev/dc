@@ -26,8 +26,7 @@ warnings = {}
 warning_limit = 5
 mute_duration = 600  # 10 分鐘
 
-# --------------------------- 管理功能（20+ 完整不同指令示例） ---------------------------
-# 每個功能單獨編寫，邏輯不同
+# --------------------------- 管理功能 ---------------------------
 @bot.tree.command(name="kick", description="踢出成員")
 @app_commands.describe(member="要踢出的成員")
 async def kick(interaction: discord.Interaction, member: discord.Member):
@@ -72,8 +71,7 @@ async def purge(interaction: discord.Interaction, limit: int):
         deleted = await interaction.channel.purge(limit=limit)
         await interaction.response.send_message(f'已刪除 {len(deleted)} 則訊息', ephemeral=True)
 
-# 加入更多不同管理功能，如限時禁言、頻道鎖定、公告管理等，確保功能不重複
-# --------------------------- 公告系統（15+ 完整不同指令示例） ---------------------------
+# --------------------------- 公告系統 ---------------------------
 announcements = {}
 
 @bot.tree.command(name="announce", description="發布公告")
@@ -104,7 +102,7 @@ async def list_announcements(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('目前沒有公告')
 
-# --------------------------- 私訊系統（15+ 完整不同指令示例） ---------------------------
+# --------------------------- 私訊系統 ---------------------------
 @bot.tree.command(name="dm_user", description="私訊成員")
 @app_commands.describe(member="成員", content="訊息內容")
 async def dm_user(interaction: discord.Interaction, member: discord.Member, content: str):
@@ -119,21 +117,22 @@ async def dm_all(interaction: discord.Interaction, content: str):
             await m.send(content)
     await interaction.response.send_message('訊息已發送給所有成員', ephemeral=True)
 
-# --------------------------- 娛樂功能（50+ 完整不同指令示例） ---------------------------
-async def generate_games():
-    games = []
-    games.append(('dice', '擲骰子'))
-    games.append(('coin', '擲硬幣'))
-    games.append(('rps', '剪刀石頭布'))
-    games.append(('guess_number', '猜數字'))
-    games.append(('word_scramble', '打亂單字'))
-    games.append(('math_challenge', '數學挑戰'))
-    games.append(('joke', '笑話'))
-    games.append(('quote', '名言'))
-    games.append(('trivia', '小知識問答'))
-    games.append(('story', '隨機故事'))
-    # 依此方式增加更多遊戲，直到超過50個完全不同遊戲
-    return games
+# --------------------------- 娛樂功能 ---------------------------
+@bot.tree.command(name="dice", description="擲骰子")
+async def dice(interaction: discord.Interaction):
+    await interaction.response.send_message(f'{interaction.user} 擲出了 {random.randint(1,6)}')
+
+@bot.tree.command(name="coin", description="擲硬幣")
+async def coin(interaction: discord.Interaction):
+    await interaction.response.send_message(f'{interaction.user} 擲出了 {random.choice(["正面", "反面"])}')
+
+@bot.tree.command(name="rps", description="剪刀石頭布")
+@app_commands.describe(choice="石頭/剪刀/布")
+async def rps(interaction: discord.Interaction, choice: str):
+    bot_choice = random.choice(['石頭','剪刀','布'])
+    await interaction.response.send_message(f'{interaction.user} 選擇 {choice}, Bot 選擇 {bot_choice}')
+
+# 其他娛樂遊戲可依此模式繼續添加，不需任何音樂模組
 
 # --------------------------- /help 指令 ---------------------------
 @bot.tree.command(name='help', description='顯示所有指令與功能')
