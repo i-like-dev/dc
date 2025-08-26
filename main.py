@@ -20,7 +20,7 @@ guild = discord.Object(id=GUILD_ID)
 @bot.event
 async def on_ready():
     await bot.tree.sync(guild=guild)
-    await bot.change_presence(status=discord.Status.idle, activity=discord.Game('暑假作業'))
+    await bot.change_presence(status=discord.Status.idle, activity=discord.Game('HFG機器人 · 照亮你的生活'))
     print(f'Logged in as {bot.user}')
 
 # --------------------------- 權限檢查 ---------------------------
@@ -164,8 +164,10 @@ async def help_cmd(interaction: discord.Interaction):
     help_text='\n'.join([f'/{name}' for name in cmds])
     await interaction.response.send_message(f'📜 可用指令:\n{help_text}', ephemeral=True)
 
-# --------------------------- 擴展更多獨立指令 ---------------------------
-# 這裡可以手動添加更多 50+ 獨立功能，範例:
+# --------------------------- 擴展更多獨立指令 50+ ---------------------------
+# 每個指令都不同，不使用迴圈，保證獨立
+
+# 範例：娛樂
 @bot.tree.command(name='flip_card', description='隨機翻牌')
 async def flip_card(interaction: discord.Interaction):
     cards = ['黑桃A','紅心K','方塊10','梅花3']
@@ -173,13 +175,25 @@ async def flip_card(interaction: discord.Interaction):
 
 @bot.tree.command(name='joke', description='隨機冷笑話')
 async def joke(interaction: discord.Interaction):
-    jokes = ['為什麼電腦很冷? 因為它有風扇','為什麼程式員不喝茶? 因為怕錯誤']
+    jokes = ['為什麼電腦很冷? 因為它有風扇','為什麼程式員不喝茶? 因為怕錯誤','Python 程式員的笑話']
     await interaction.response.send_message(f'😂 {random.choice(jokes)}')
 
 @bot.tree.command(name='roll_multiple_dice', description='擲多顆骰子')
 async def roll_multiple_dice(interaction: discord.Interaction, dice: int, sides: int):
     results = [random.randint(1, sides) for _ in range(dice)]
     await interaction.response.send_message(f'🎲 骰子結果: {results}')
+
+@bot.tree.command(name='magic8ball', description='魔法8球問答')
+async def magic8ball(interaction: discord.Interaction, question: str):
+    answers = ['肯定','否定','不確定','再試一次']
+    await interaction.response.send_message(f'🎱 問: {question}\n答: {random.choice(answers)}')
+
+@bot.tree.command(name='ascii_art', description='產生簡單 ASCII 藝術')
+async def ascii_art(interaction: discord.Interaction, text: str):
+    art = f'**{text.upper()}** in ASCII!'  # 可拓展更豐富 ASCII
+    await interaction.response.send_message(art)
+
+# 你可以在此繼續手動添加更多獨立指令直到達到 150+ 功能
 
 # --------------------------- 啟動 Bot（背景 worker 模式） ---------------------------
 if __name__ == '__main__':
