@@ -14,6 +14,9 @@ ANNOUNCE_CHANNEL_ID = 1228485979090718720
 LEVEL_FILE = 'levels.json'
 WARN_FILE = 'warnings.json'
 
+daily_quote_time = "09:00"
+daily_announce_time = "12:00"
+
 # --------------------------- Bot ---------------------------
 class MyBot(discord.Client):
     def __init__(self):
@@ -22,33 +25,65 @@ class MyBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.levels = {}
         self.warnings = {}
-        try:
-            with open(LEVEL_FILE,'r',encoding='utf-8') as f:
-                self.levels = json.load(f)
-        except:
-            self.levels = {}
-        try:
-            with open(WARN_FILE,'r',encoding='utf-8') as f:
-                self.warnings = json.load(f)
-        except:
-            self.warnings = {}
+        self.load_json(LEVEL_FILE, 'levels')
+        self.load_json(WARN_FILE, 'warnings')
+        self.active_raffles = {}
 
     async def setup_hook(self):
         guild = discord.Object(id=GUILD_ID)
         await self.tree.sync(guild=guild)
-        print("✅ Slash commands 已同步到指定伺服器!")
+        print("✅ Slash Command 已同步到指定伺服器")
+        self.bg_task = self.loop.create_task(self.background_tasks())
+        self.raffle_task = self.loop.create_task(self.raffle_check())
+
+    def load_json(self, filename, attr):
+        try:
+            with open(filename,'r',encoding='utf-8') as f:
+                setattr(self, attr, json.load(f))
+        except:
+            setattr(self, attr, {})
 
     def save_json(self, filename, data):
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-bot = MyBot()
+    async def background_tasks(self):
+        await self.wait_until_ready()
+        while not self.is_closed():
+            now = datetime.utcnow()
+            if now.strftime("%H:%M") == daily_quote_time:
+                channel = self.get_channel(ANNOUNCE_CHANNEL_ID)
+                quote = random.choice([
+                    "今天也要加油！", "相信自己！", "不要輕言放棄！",
+                    "你很棒！", "每一天都是新的開始！"
+                ])
+                await channel.send(f"💡 每日勵志語錄：{quote}")
+                await asyncio.sleep(60)
+            if now.strftime("%H:%M") == daily_announce_time:
+                channel = self.get_channel(ANNOUNCE_CHANNEL_ID)
+                await channel.send("📌 每日公告：記得遵守伺服器規範！")
+                await asyncio.sleep(60)
+            await asyncio.sleep(20)
 
-# --------------------------- Bot 狀態 ---------------------------
-@bot.event
-async def on_ready():
-    await bot.change_presence(status=discord.Status.online, activity=discord.Game('HFG 機器人 ・ 照亮你的生活'))
-    print(f'Logged in as {bot.user}')
+    async def raffle_check(self):
+        await self.wait_until_ready()
+        while not self.is_closed():
+            to_remove = []
+            for msg_id, raffle in self.active_raffles.items():
+                if datetime.utcnow() >= raffle["end_time"]:
+                    channel = self.get_channel(ANNOUNCE_CHANNEL_ID)
+                    if raffle["participants"]:
+                        winner_id = random.choice(raffle["participants"])
+                        winner = await self.fetch_user(winner_id)
+                        await channel.send(f"🎊 抽獎結束！獎品: {raffle['prize']}\n恭喜: {winner.mention}")
+                    else:
+                        await channel.send(f"🎊 抽獎結束！獎品: {raffle['prize']}\n沒有人參加")
+                    to_remove.append(msg_id)
+            for msg_id in to_remove:
+                self.active_raffles.pop(msg_id)
+            await asyncio.sleep(30)
+
+bot = MyBot()
 
 # --------------------------- 權限檢查 ---------------------------
 def is_admin():
@@ -56,12 +91,17 @@ def is_admin():
         return any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles)
     return app_commands.check(predicate)
 
+# --------------------------- Bot 狀態 ---------------------------
+@bot.event
+async def on_ready():
+    await bot.change_presence(status=discord.Status.online, activity=discord.Game('HFG 機器人 ・ 照亮你的生活'))
+    print(f'Logged in as {bot.user}')
+
 # --------------------------- 等級系統 ---------------------------
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
-
     uid = str(message.author.id)
     bot.levels.setdefault(uid, {"xp":0, "level":1})
     bot.levels[uid]["xp"] += 10
@@ -69,7 +109,8 @@ async def on_message(message):
     level = bot.levels[uid]["level"]
     if xp >= level*100:
         bot.levels[uid]["level"] += 1
-        await message.channel.send(f'🎉 {message.author.mention} 升到等級 {level+1}!')
+        channel = message.channel
+        await channel.send(f'🎉 {message.author.mention} 升到等級 {level+1}!')
     bot.save_json(LEVEL_FILE, bot.levels)
     await bot.process_commands(message)
 
@@ -101,7 +142,7 @@ async def warn(interaction: discord.Interaction, member: discord.Member, reason:
     await warn_user(member, reason, interaction.user)
     await interaction.response.send_message(f'✅ 已警告 {member.display_name} ({bot.warnings[str(member.id)]} 次)', ephemeral=True)
 
-# --------------------------- 權限管理 ---------------------------
+# --------------------------- 管理權限 ---------------------------
 @bot.tree.command(name='grant_admin', description='給予管理權限')
 @is_admin()
 async def grant_admin(interaction: discord.Interaction, member: discord.Member):
@@ -179,43 +220,24 @@ async def truth_or_dare(interaction: discord.Interaction):
 async def hug(interaction: discord.Interaction, member: discord.Member):
     await interaction.response.send_message(f'🤗 {interaction.user.mention} 擁抱了 {member.mention}!')
 
-# --------------------------- 投票功能 ---------------------------
-@bot.tree.command(name='poll', description='建立投票')
-async def poll(interaction: discord.Interaction, question: str, option1: str, option2: str, option3: str = None):
-    options = [option1, option2]
-    if option3: options.append(option3)
-    embed = discord.Embed(title="📊 投票", description=question, color=discord.Color.green())
-    for i,opt in enumerate(options):
-        embed.add_field(name=f'選項 {i+1}', value=opt, inline=False)
-    msg = await interaction.channel.send(embed=embed)
-    emojis = ['1️⃣','2️⃣','3️⃣']
-    for i in range(len(options)):
-        await msg.add_reaction(emojis[i])
-    await interaction.response.send_message('✅ 投票已建立', ephemeral=True)
+# --------------------------- 抽獎功能 ---------------------------
+@bot.tree.command(name='raffle', description='建立抽獎')
+@is_admin()
+async def raffle(interaction: discord.Interaction, prize: str, duration: int):
+    channel = interaction.channel
+    embed = discord.Embed(title="🎉 新抽獎活動", description=f"獎品: {prize}\n抽獎時間: {duration} 分鐘", color=discord.Color.gold())
+    msg = await channel.send(embed=embed)
+    bot.active_raffles[msg.id] = {"prize": prize, "participants": [], "end_time": datetime.utcnow()+timedelta(minutes=duration)}
+    await interaction.response.send_message(f"✅ 抽獎已開始，訊息ID: {msg.id}", ephemeral=True)
 
-# --------------------------- 提醒功能 ---------------------------
-@bot.tree.command(name='remind', description='設定提醒')
-async def remind(interaction: discord.Interaction, time: int, *, message: str):
-    await interaction.response.send_message(f'⏰ 提醒設定 {time} 秒後提醒你: {message}', ephemeral=True)
-    await asyncio.sleep(time)
-    await interaction.user.send(f'⏰ 提醒: {message}')
-
-# --------------------------- 笑話 / 勵志 / 8ball ---------------------------
-jokes = ["為什麼電腦很累？因為它一直在執行指令！","我昨天試著吃一個程式碼，結果卡住了。"]
-quotes = ["堅持就是勝利。","每天都是新的開始。"]
-answers = ["是","不是","不確定","可能","絕對"]
-
-@bot.tree.command(name='joke', description='隨機笑話')
-async def joke(interaction: discord.Interaction):
-    await interaction.response.send_message(f'😂 {random.choice(jokes)}')
-
-@bot.tree.command(name='quote', description='隨機勵志語錄')
-async def quote(interaction: discord.Interaction):
-    await interaction.response.send_message(f'💡 {random.choice(quotes)}')
-
-@bot.tree.command(name='8ball', description='問魔法球')
-async def ball(interaction: discord.Interaction, question: str):
-    await interaction.response.send_message(f'🎱 問題: {question}\n答案: {random.choice(answers)}')
+@bot.event
+async def on_reaction_add(reaction, user):
+    if user.bot:
+        return
+    if reaction.message.id in bot.active_raffles:
+        raffle = bot.active_raffles[reaction.message.id]
+        if user.id not in raffle["participants"]:
+            raffle["participants"].append(user.id)
 
 # --------------------------- 啟動 Bot ---------------------------
 bot.run(TOKEN)
