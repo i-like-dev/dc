@@ -27,7 +27,7 @@ bot = MyBot()
 # --------------------------- Bot 狀態 ---------------------------
 @bot.event
 async def on_ready():
-    await bot.change_presence(status=discord.Status.idle, activity=discord.Game('暑假作業'))
+    await bot.change_presence(status=discord.Status.idle, activity=discord.Game('HFG 機器人 · 照亮你的生活'))
     print(f'Logged in as {bot.user}')
 
 # --------------------------- 權限檢查 ---------------------------
