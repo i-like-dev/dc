@@ -9,7 +9,6 @@ import os
 TOKEN = os.environ.get('DISCORD_TOKEN')
 GUILD_ID = 1227929105018912839
 ADMIN_ROLE_ID = 1227938559130861578
-PORT = int(os.environ.get('PORT', 8080))
 
 # --------------------------- Bot 設定 ---------------------------
 intents = discord.Intents.all()
@@ -98,8 +97,6 @@ async def dm_user(interaction: discord.Interaction, member: discord.Member, mess
         await interaction.response.send_message('無法私訊此用戶。', ephemeral=True)
 
 # --------------------------- 娛樂/工具/互動功能（手動添加不重複） ---------------------------
-# 每個函數都是獨立邏輯，不使用迴圈
-
 @bot.tree.command(name='coinflip', description='擲硬幣')
 async def coinflip(interaction: discord.Interaction):
     result = random.choice(['正面','反面'])
@@ -150,19 +147,7 @@ async def help_cmd(interaction: discord.Interaction):
     help_text='\n'.join([f'/{cmd}' for cmd in all_commands])
     await interaction.response.send_message(f'📜 可用指令:\n{help_text}', ephemeral=True)
 
-# --------------------------- Render 背景服務 ---------------------------
-import threading
-from flask import Flask
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return 'Bot is running'
-
-def run_flask():
-    app.run(host='0.0.0.0', port=PORT)
-
-threading.Thread(target=run_flask).start()
-
 # --------------------------- 啟動 Bot ---------------------------
 bot.run(TOKEN)
+
+# 注意: Flask 不再使用，Render 上直接運行 Bot 即可，不需額外依賴
