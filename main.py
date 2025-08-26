@@ -22,7 +22,6 @@ class MyBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.levels = {}
         self.warnings = {}
-        # 載入 JSON
         try:
             with open(LEVEL_FILE,'r',encoding='utf-8') as f:
                 self.levels = json.load(f)
@@ -37,7 +36,7 @@ class MyBot(discord.Client):
     async def setup_hook(self):
         guild = discord.Object(id=GUILD_ID)
         await self.tree.sync(guild=guild)
-        print("✅ Slash commands synced to the guild!")
+        print("✅ Slash commands 已同步到指定伺服器!")
 
     def save_json(self, filename, data):
         with open(filename, 'w', encoding='utf-8') as f:
@@ -179,6 +178,44 @@ async def truth_or_dare(interaction: discord.Interaction):
 @bot.tree.command(name='hug', description='給予擁抱')
 async def hug(interaction: discord.Interaction, member: discord.Member):
     await interaction.response.send_message(f'🤗 {interaction.user.mention} 擁抱了 {member.mention}!')
+
+# --------------------------- 投票功能 ---------------------------
+@bot.tree.command(name='poll', description='建立投票')
+async def poll(interaction: discord.Interaction, question: str, option1: str, option2: str, option3: str = None):
+    options = [option1, option2]
+    if option3: options.append(option3)
+    embed = discord.Embed(title="📊 投票", description=question, color=discord.Color.green())
+    for i,opt in enumerate(options):
+        embed.add_field(name=f'選項 {i+1}', value=opt, inline=False)
+    msg = await interaction.channel.send(embed=embed)
+    emojis = ['1️⃣','2️⃣','3️⃣']
+    for i in range(len(options)):
+        await msg.add_reaction(emojis[i])
+    await interaction.response.send_message('✅ 投票已建立', ephemeral=True)
+
+# --------------------------- 提醒功能 ---------------------------
+@bot.tree.command(name='remind', description='設定提醒')
+async def remind(interaction: discord.Interaction, time: int, *, message: str):
+    await interaction.response.send_message(f'⏰ 提醒設定 {time} 秒後提醒你: {message}', ephemeral=True)
+    await asyncio.sleep(time)
+    await interaction.user.send(f'⏰ 提醒: {message}')
+
+# --------------------------- 笑話 / 勵志 / 8ball ---------------------------
+jokes = ["為什麼電腦很累？因為它一直在執行指令！","我昨天試著吃一個程式碼，結果卡住了。"]
+quotes = ["堅持就是勝利。","每天都是新的開始。"]
+answers = ["是","不是","不確定","可能","絕對"]
+
+@bot.tree.command(name='joke', description='隨機笑話')
+async def joke(interaction: discord.Interaction):
+    await interaction.response.send_message(f'😂 {random.choice(jokes)}')
+
+@bot.tree.command(name='quote', description='隨機勵志語錄')
+async def quote(interaction: discord.Interaction):
+    await interaction.response.send_message(f'💡 {random.choice(quotes)}')
+
+@bot.tree.command(name='8ball', description='問魔法球')
+async def ball(interaction: discord.Interaction, question: str):
+    await interaction.response.send_message(f'🎱 問題: {question}\n答案: {random.choice(answers)}')
 
 # --------------------------- 啟動 Bot ---------------------------
 bot.run(TOKEN)
