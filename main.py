@@ -164,6 +164,23 @@ async def help_cmd(interaction: discord.Interaction):
     help_text='\n'.join([f'/{name}' for name in cmds])
     await interaction.response.send_message(f'📜 可用指令:\n{help_text}', ephemeral=True)
 
+# --------------------------- 擴展更多獨立指令 ---------------------------
+# 這裡可以手動添加更多 50+ 獨立功能，範例:
+@bot.tree.command(name='flip_card', description='隨機翻牌')
+async def flip_card(interaction: discord.Interaction):
+    cards = ['黑桃A','紅心K','方塊10','梅花3']
+    await interaction.response.send_message(f'🃏 翻到: {random.choice(cards)}')
+
+@bot.tree.command(name='joke', description='隨機冷笑話')
+async def joke(interaction: discord.Interaction):
+    jokes = ['為什麼電腦很冷? 因為它有風扇','為什麼程式員不喝茶? 因為怕錯誤']
+    await interaction.response.send_message(f'😂 {random.choice(jokes)}')
+
+@bot.tree.command(name='roll_multiple_dice', description='擲多顆骰子')
+async def roll_multiple_dice(interaction: discord.Interaction, dice: int, sides: int):
+    results = [random.randint(1, sides) for _ in range(dice)]
+    await interaction.response.send_message(f'🎲 骰子結果: {results}')
+
 # --------------------------- 啟動 Bot（背景 worker 模式） ---------------------------
 if __name__ == '__main__':
     bot.run(TOKEN)
