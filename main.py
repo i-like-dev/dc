@@ -97,32 +97,55 @@ async def dm_user(interaction: discord.Interaction, member: discord.Member, mess
     except discord.Forbidden:
         await interaction.response.send_message('無法私訊此用戶。', ephemeral=True)
 
-# --------------------------- 娛樂/工具/互動功能 ---------------------------
-existing_commands = ['coinflip','rps','random_joke','math_quiz','reverse_text','random_color','roll_dice','fortune','generate_password','emoji_game']
+# --------------------------- 娛樂/工具/互動功能（手動添加不重複） ---------------------------
+# 每個函數都是獨立邏輯，不使用迴圈
 
-# 新增更多獨立指令，拓展到超過300個功能示例
-fun_commands = []
+@bot.tree.command(name='coinflip', description='擲硬幣')
+async def coinflip(interaction: discord.Interaction):
+    result = random.choice(['正面','反面'])
+    await interaction.response.send_message(f'🪙 硬幣結果: {result}')
 
-# 已有100個獨立指令，現在追加150個新獨立指令
-for i in range(101, 251):  # 150+娛樂/工具獨立指令
-    async def dynamic_fun(interaction: discord.Interaction, num=i):
-        content = random.choice([
-            f'🎲 指令 {num} 給你一個隨機數字: {random.randint(1,100)}',
-            f'💡 指令 {num} 生成隨機顏色: #{random.randint(0,0xFFFFFF):06X}',
-            f'🤖 指令 {num} 小遊戲: 猜數字',
-            f'🎉 指令 {num} 隨機趣味消息',
-            f'🔢 指令 {num} 計算: {random.randint(1,50)} + {random.randint(1,50)} = {random.randint(50,100)}'
-        ])
-        await interaction.response.send_message(content)
-    cmd_name = f'fun_cmd_{i}'
-    bot.tree.command(name=cmd_name, description=f'獨立娛樂工具指令 {i}')(dynamic_fun)
-    fun_commands.append(cmd_name)
+@bot.tree.command(name='roll_dice', description='擲骰子')
+async def roll_dice(interaction: discord.Interaction, sides: int = 6):
+    result = random.randint(1, sides)
+    await interaction.response.send_message(f'🎲 骰子結果: {result}')
+
+@bot.tree.command(name='random_joke', description='隨機笑話')
+async def random_joke(interaction: discord.Interaction):
+    jokes = ['為什麼電腦冷？因為它有風扇','為什麼程式員喜歡戶外？因為他們討厭Bug']
+    await interaction.response.send_message(random.choice(jokes))
+
+@bot.tree.command(name='math_quiz', description='數學測驗')
+async def math_quiz(interaction: discord.Interaction):
+    a, b = random.randint(1,50), random.randint(1,50)
+    await interaction.response.send_message(f'計算: {a} + {b} = ?')
+
+@bot.tree.command(name='reverse_text', description='反轉文字')
+async def reverse_text(interaction: discord.Interaction, text: str):
+    await interaction.response.send_message(text[::-1])
+
+@bot.tree.command(name='random_color', description='隨機顏色')
+async def random_color(interaction: discord.Interaction):
+    color = f'#{random.randint(0,0xFFFFFF):06X}'
+    await interaction.response.send_message(f'🎨 隨機顏色: {color}')
+
+@bot.tree.command(name='fortune', description='運勢')
+async def fortune(interaction: discord.Interaction):
+    fortunes = ['大吉','中吉','小吉','凶']
+    await interaction.response.send_message(f'🔮 今日運勢: {random.choice(fortunes)}')
+
+@bot.tree.command(name='generate_password', description='生成隨機密碼')
+async def generate_password(interaction: discord.Interaction, length: int = 12):
+    chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()'
+    password = ''.join(random.choice(chars) for _ in range(length))
+    await interaction.response.send_message(f'🔑 隨機密碼: {password}')
 
 # --------------------------- /help 指令 ---------------------------
 @bot.tree.command(name='help', description='顯示可用指令列表')
 async def help_cmd(interaction: discord.Interaction):
-    all_commands = existing_commands + fun_commands + [
-        'grant_admin_access','revoke_admin_access','announce','dm_user'
+    all_commands = [
+        'grant_admin_access','revoke_admin_access','announce','dm_user',
+        'coinflip','roll_dice','random_joke','math_quiz','reverse_text','random_color','fortune','generate_password'
     ]
     help_text='\n'.join([f'/{cmd}' for cmd in all_commands])
     await interaction.response.send_message(f'📜 可用指令:\n{help_text}', ephemeral=True)
