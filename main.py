@@ -3,11 +3,24 @@ from discord import app_commands
 import asyncio
 import random
 import os
+import json
 
 # --------------------------- 設定 ---------------------------
 TOKEN = os.environ.get('DISCORD_TOKEN')
 GUILD_ID = 1227929105018912839
 ADMIN_ROLE_ID = 1227938559130861578
+LEVEL_FILE = 'levels.json'
+
+# --------------------------- 輔助函數 ---------------------------
+def load_levels():
+    if not os.path.exists(LEVEL_FILE):
+        return {}
+    with open(LEVEL_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_levels(levels):
+    with open(LEVEL_FILE, 'w', encoding='utf-8') as f:
+        json.dump(levels, f, ensure_ascii=False, indent=4)
 
 # --------------------------- Bot 設定 ---------------------------
 class MyBot(discord.Client):
@@ -17,6 +30,7 @@ class MyBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.user_permissions = {}
         self.warnings = {}
+        self.levels = load_levels()
 
     async def setup_hook(self):
         guild = discord.Object(id=GUILD_ID)
@@ -31,13 +45,40 @@ async def on_ready():
     await bot.change_presence(status=discord.Status.idle, activity=discord.Game('HFG 機器人 ・ 照亮你的生活'))
     print(f'Logged in as {bot.user}')
 
+# --------------------------- 等級系統 ---------------------------
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    user_id = str(message.author.id)
+    bot.levels.setdefault(user_id, {"xp": 0, "level": 1})
+
+    bot.levels[user_id]["xp"] += 10
+    xp = bot.levels[user_id]["xp"]
+    level = bot.levels[user_id]["level"]
+
+    if xp >= level * 100:
+        bot.levels[user_id]["level"] += 1
+        await message.channel.send(f'🎉 恭喜 {message.author.mention} 升到等級 {level+1}!')
+
+    save_levels(bot.levels)
+    await bot.process_commands(message)
+
+@bot.tree.command(name='level', description='查看等級', guild=discord.Object(id=GUILD_ID))
+async def level(interaction: discord.Interaction, member: discord.Member = None):
+    member = member or interaction.user
+    user_id = str(member.id)
+    data = bot.levels.get(user_id, {"xp": 0, "level": 1})
+    await interaction.response.send_message(f'⭐ {member.mention} 等級: {data["level"]}, XP: {data["xp"]}')
+
 # --------------------------- 權限檢查 ---------------------------
 def is_admin():
     def predicate(interaction: discord.Interaction) -> bool:
         return any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles)
     return app_commands.check(predicate)
 
-# --------------------------- 測試指令 ---------------------------
+# --------------------------- 測試與基本指令 ---------------------------
 @bot.tree.command(name='ping', description='測試指令', guild=discord.Object(id=GUILD_ID))
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message('Pong! ✅')
@@ -132,7 +173,7 @@ async def announce(interaction: discord.Interaction, message: str):
 @is_admin()
 async def dm_user(interaction: discord.Interaction, member: discord.Member, message: str):
     try:
-        await member.send(f'📩 管理員訊息: {message}')
+        await member.send(f'📩 管理員 {interaction.user} 傳送: {message}')
         await interaction.response.send_message(f'訊息已發送給 {member}.', ephemeral=True)
     except discord.Forbidden:
         await interaction.response.send_message('無法私訊此用戶。', ephemeral=True)
@@ -149,7 +190,9 @@ async def roll_dice(interaction: discord.Interaction, sides: int):
 @bot.tree.command(name='truth_or_dare', description='真心話大冒險', guild=discord.Object(id=GUILD_ID))
 async def truth_or_dare(interaction: discord.Interaction):
     choice = random.choice(['真心話','大冒險'])
-    prompt = random.choice(['問題1','問題2','問題3']) if choice=='真心話' else random.choice(['挑戰1','挑戰2','挑戰3'])
+    truth_prompts = ['你最怕什麼?', '最近一次說謊是什麼?', '有沒有偷偷喜歡過伺服器裡的人?']
+    dare_prompts = ['在公開頻道唱一首歌', '發一張搞笑自拍', '在聊天區說三次"我是豬"']
+    prompt = random.choice(truth_prompts if choice=='真心話' else dare_prompts)
     await interaction.response.send_message(f'🎲 {choice}: {prompt}')
 
 @bot.tree.command(name='create_ticket', description='開客服單', guild=discord.Object(id=GUILD_ID))
@@ -208,6 +251,16 @@ async def userinfo(interaction: discord.Interaction, member: discord.Member):
 async def eight_ball(interaction: discord.Interaction, question: str):
     responses = ["是的", "不是", "可能", "再問一次", "絕對是", "我不確定"]
     await interaction.response.send_message(f'🎱 問題: {question}\n答案: {random.choice(responses)}')
+
+@bot.tree.command(name='joke', description='隨機笑話', guild=discord.Object(id=GUILD_ID))
+async def joke(interaction: discord.Interaction):
+    jokes = ["我昨天去看牙醫，他說我需要放鬆，所以他給我了一張帳單。", "電腦最怕什麼？當機！", "為什麼數學課很吵？因為大家都在講題。"]
+    await interaction.response.send_message(f'😂 {random.choice(jokes)}')
+
+@bot.tree.command(name='quote', description='隨機勵志語錄', guild=discord.Object(id=GUILD_ID))
+async def quote(interaction: discord.Interaction):
+    quotes = ["成功不是終點，失敗也不是末日，最重要的是勇氣。", "保持微笑，世界會因你而更美好。", "每天進步一點點，就是成功的一大步。"]
+    await interaction.response.send_message(f'💡 {random.choice(quotes)}')
 
 # --------------------------- 啟動 Bot ---------------------------
 bot.run(TOKEN)
