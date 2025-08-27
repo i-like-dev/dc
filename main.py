@@ -1,7 +1,6 @@
 import os
 import json
 import random
-import asyncio
 from datetime import datetime, timezone
 
 import discord
@@ -10,17 +9,14 @@ from discord.ext import commands, tasks
 
 # ======================
 # Discord 超完整 Bot - main.py
-# 包含管理、公告、等級、警告、經濟、娛樂、客服單、文字工具等功能
-# 全部使用 Slash Command
-# 設定環境變數: DISCORD_TOKEN
+# 使用 Slash Command，狀態 idle
 # ======================
 
 # ---------- 設定區 ----------
 GUILD_ID = 123456789012345678  # 伺服器 ID
 ADMIN_ROLE_ID = 123456789012345678  # 管理員角色 ID
 ANNOUNCE_CHANNEL_ID = 123456789012345678  # 公告頻道 ID
-OWNER_ID = None  # 若要限定某人使用特權指令
-
+OWNER_ID = None  # 限定特權使用者
 DATA_DIR = '.'
 LEVEL_FILE = os.path.join(DATA_DIR, 'levels.json')
 WARN_FILE = os.path.join(DATA_DIR, 'warnings.json')
@@ -33,9 +29,9 @@ if not TOKEN:
 
 # ---------- 工具函式 ----------
 def load_json(path, default):
+    if not os.path.exists(path):
+        return default
     try:
-        if not os.path.exists(path):
-            return default
         with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception:
@@ -56,7 +52,6 @@ state = {
     'warnings': load_json(WARN_FILE, {}),
     'currency': load_json(CURRENCY_FILE, {}),
     'feature_perms': load_json(PERM_FILE, {}),
-    'guess_games': {},
 }
 
 # ---------- 權限檢查 ----------
@@ -84,24 +79,16 @@ def require_feature_permission():
         return True
     return app_commands.check(predicate)
 
-# ---------- on_ready & sync ----------
+# ---------- on_ready ----------
 @bot.event
 async def on_ready():
-    await bot.change_presence(status=discord.Status.online, activity=discord.Game(f'HFG 服務了 {len(bot.users)} 人'))
+    await bot.change_presence(status=discord.Status.idle, activity=discord.Game(f'HFG 服務了 {sum(1 for m in bot.get_guild(GUILD_ID).members if not m.bot)} 人'))
     try:
         synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
         print(f'✅ 已同步 {len(synced)} 個 Slash 指令')
     except Exception as e:
         print('❌ 同步失敗:', e)
     print('🟢 Bot 已啟動:', bot.user)
-
-    # 啟動狀態更新循環
-    update_status.start()
-
-# ---------- 狀態更新 ----------
-@tasks.loop(seconds=60)
-async def update_status():
-    await bot.change_presence(status=discord.Status.online, activity=discord.Game(f'HFG 服務了 {len(bot.users)} 人'))
 
 # ---------- 等級系統 ----------
 @bot.event
@@ -119,13 +106,12 @@ async def on_message(message: discord.Message):
     save_json(LEVEL_FILE, state['levels'])
     await bot.process_commands(message)
 
-# ---------- Slash Command 範例 ----------
+# ---------- Slash Command: Help ----------
 @bot.tree.command(name='help', description='顯示指令清單', guild=discord.Object(id=GUILD_ID))
 async def help_cmd(inter: discord.Interaction):
     cmds = bot.tree.get_commands(guild=discord.Object(id=GUILD_ID))
     lines = [f'/{c.name} — {c.description}' for c in cmds]
-    await inter.response.send_message('📜 指令清單:
-' + '\n'.join(lines), ephemeral=True)
+    await inter.response.send_message('📜 指令清單:\n' + '\n'.join(lines), ephemeral=True)
 
 # ---------- 管理 ----------
 @bot.tree.command(name='clear', description='清除訊息', guild=discord.Object(id=GUILD_ID))
