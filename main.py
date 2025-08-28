@@ -148,8 +148,7 @@ def save_all():
 async def help_cmd(inter: discord.Interaction):
     cmds = bot.tree.get_commands(guild=discord.Object(id=GUILD_ID))
     lines = [f"/{c.name} — {c.description}" for c in cmds]
-    await inter.response.send_message('
-'.join(['📜 指令清單:'] + lines), ephemeral=True)
+    await inter.response.send_message(''.join(['📜 指令清單:'] + lines), ephemeral=True)
 
 
 # ----- Economy -----
