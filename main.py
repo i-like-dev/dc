@@ -490,8 +490,7 @@ async def dice(inter: discord.Interaction, sides: int = 6):
 @require_feature_permission()
 async def eight_ball(inter: discord.Interaction, question: str):
     answers = ['是', '否', '可能', '再問一次', '不確定']
-    await inter.response.send_message(f'🎱 Q: {question}
-A: {random.choice(answers)}')
+    await inter.response.send_message(f'🎱 Q: {question} A: {random.choice(answers)}')
 
 
 @bot.tree.command(name='truth', description='真心話題目', guild=discord.Object(id=GUILD_ID))
