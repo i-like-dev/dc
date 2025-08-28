@@ -2,66 +2,111 @@ import os
 import json
 import random
 import asyncio
-from datetime import datetime, timedelta, timezone
 import threading
+from datetime import datetime, timedelta, timezone
 
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 from flask import Flask
 
-# ===================== 基本設定 =====================
+# =======================
+# Configuration
+# =======================
 GUILD_ID = 1227929105018912839
 ADMIN_ROLE_ID = 1227938559130861578
 ANNOUNCE_CHANNEL_ID = 1228485979090718720
+DM_FORWARD_CHANNEL_ID = 1410490139297452042
 OWNER_ID = 1213418744685273100
+PORT = int(os.environ.get("PORT", 8080))
 
-DATA_DIR = "."
-LEVEL_FILE = os.path.join(DATA_DIR, "levels.json")
+DATA_DIR = "./data"
+os.makedirs(DATA_DIR, exist_ok=True)
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
 WARN_FILE = os.path.join(DATA_DIR, "warnings.json")
-CURRENCY_FILE = os.path.join(DATA_DIR, "currency.json")
-PERM_FILE = os.path.join(DATA_DIR, "feature_perms.json")
-TICKET_FILE = os.path.join(DATA_DIR, "tickets.json")
+PERMS_FILE = os.path.join(DATA_DIR, "feature_perms.json")
+DAILY_FILE = os.path.join(DATA_DIR, "daily.json")
 
 TOKEN = os.environ.get("DISCORD_TOKEN")
 if not TOKEN:
     raise RuntimeError("環境變數 DISCORD_TOKEN 未設定")
 
-# ===================== JSON 工具 =====================
+# =======================
+# JSON helpers
+# =======================
+
 def load_json(path, default):
-    if not os.path.exists(path):
-        return default
     try:
+        if not os.path.exists(path):
+            return default
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return default
 
+
 def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# ===================== Bot & 狀態 =====================
+# load persistent state
+USERS = load_json(USERS_FILE, {})          # {user_id: {money, level, xp, tickets}}
+WARNINGS = load_json(WARN_FILE, {})        # {user_id: [entries]}
+FEATURE_PERMS = load_json(PERMS_FILE, {})  # {user_id: True/False}
+DAILY = load_json(DAILY_FILE, {})         # {user_id: 'YYYY-MM-DD'}
+
+# =======================
+# Bot setup
+# =======================
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+intents.guilds = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="/", intents=intents)
 
-state = {
-    "levels": load_json(LEVEL_FILE, {}),
-    "warnings": load_json(WARN_FILE, {}),
-    "currency": load_json(CURRENCY_FILE, {}),
-    "feature_perms": load_json(PERM_FILE, {}),
-    "guess_games": {},
-    "tickets": load_json(TICKET_FILE, {}),
-}
+# presence updater task will run every 5 minutes
+@bot.event
+async def on_ready():
+    # set initial presence to idle and the requested game text
+    await bot.change_presence(status=discord.Status.idle, activity=discord.Game(f"HFG 機器人 服務了0人"))
+    try:
+        await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print("✅ Slash commands synced to guild")
+    except Exception as e:
+        print("⚠️ Sync failed:", e)
+    update_presence.start()
+    print(f"Bot ready: {bot.user}")
 
-# ===================== 權限判斷 =====================
-def is_admin_member(member: discord.Member):
-    if member.id == OWNER_ID:
+
+@tasks.loop(minutes=5)
+async def update_presence():
+    g = bot.get_guild(GUILD_ID)
+    if g:
+        count = g.member_count
+        await bot.change_presence(status=discord.Status.idle, activity=discord.Game(f"HFG 機器人 服務了{count}人"))
+
+# =======================
+# Utility functions
+# =======================
+
+def ensure_user(uid: str):
+    if uid not in USERS:
+        USERS[uid] = {"money": 0, "level": 1, "xp": 0, "tickets": 0}
+
+
+def save_state():
+    save_json(USERS_FILE, USERS)
+    save_json(WARN_FILE, WARNINGS)
+    save_json(PERMS_FILE, FEATURE_PERMS)
+    save_json(DAILY_FILE, DAILY)
+
+
+def is_admin_member(member: discord.Member) -> bool:
+    if OWNER_ID and member.id == OWNER_ID:
         return True
-    return any(role.id == ADMIN_ROLE_ID for role in member.roles)
+    return any(r.id == ADMIN_ROLE_ID for r in member.roles)
+
 
 def require_admin():
     async def predicate(inter: discord.Interaction):
@@ -71,199 +116,168 @@ def require_admin():
         return False
     return app_commands.check(predicate)
 
+
 def require_feature_permission():
     async def predicate(inter: discord.Interaction):
         if is_admin_member(inter.user):
             return True
-        allowed = state["feature_perms"].get(str(inter.user.id), False)
-        if not allowed:
-            await inter.response.send_message("🚫 你沒有權限，請聯絡管理員開通。", ephemeral=True)
-            return False
-        return True
+        if FEATURE_PERMS.get(str(inter.user.id), False):
+            return True
+        await inter.response.send_message("🚫 你沒有權限，請聯絡管理員開通。", ephemeral=True)
+        return False
     return app_commands.check(predicate)
 
-# ===================== on_ready / Slash 同步 / 狀態更新 =====================
-@bot.event
-async def on_ready():
-    await bot.change_presence(status=discord.Status.idle, activity=discord.Game("HFG 機器人 服務了0人"))
-    try:
-        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f"✅ 已同步 {len(synced)} 個 Slash 指令")
-    except Exception as e:
-        print("❌ 同步失敗:", e)
-    update_presence.start()
-    print("🟢 Bot 已啟動:", bot.user)
+# =======================
+# Core Slash Commands
+# =======================
 
-@tasks.loop(minutes=5)
-async def update_presence():
-    guild = bot.get_guild(GUILD_ID)
-    if guild:
-        served = guild.member_count
-        await bot.change_presence(status=discord.Status.idle, activity=discord.Game(f"HFG 機器人 服務了{served}人"))
-
-# ===================== 等級系統 =====================
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
-        return
-
-    # 等級
-    if message.guild:
-        uid = str(message.author.id)
-        lv = state["levels"].setdefault(uid, {"xp": 0, "level": 1})
-        lv["xp"] += 10
-        if lv["xp"] >= lv["level"] * 100:
-            lv["level"] += 1
-            try:
-                await message.channel.send(f"🎉 {message.author.mention} 升級到 {lv['level']} 級!")
-            except Exception:
-                pass
-        save_json(LEVEL_FILE, state["levels"])
-
-        # 猜數字
-        ans = state["guess_games"].get(message.channel.id)
-        if ans and message.content.isdigit():
-            n = int(message.content)
-            if n == ans:
-                await message.channel.send(f"🎉 {message.author.mention} 猜對了！答案就是 {ans}")
-                del state["guess_games"][message.channel.id]
-            elif n < ans:
-                await message.channel.send("太小了！")
-            else:
-                await message.channel.send("太大了！")
-
-    await bot.process_commands(message)
-
-# ===================== /help =====================
-@bot.tree.command(name="help", description="顯示可用指令清單", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name='help', description='顯示可用指令列表', guild=discord.Object(id=GUILD_ID))
 async def help_cmd(inter: discord.Interaction):
     cmds = bot.tree.get_commands(guild=discord.Object(id=GUILD_ID))
     lines = [f"/{c.name} — {c.description}" for c in cmds]
-    text = "📜 指令清單:\n" + "\n".join(lines)
-    await inter.response.send_message(text, ephemeral=True)
+    await inter.response.send_message('📜 指令清單:\n' + '\n'.join(lines), ephemeral=True)
 
-# ===================== 管理員指令 =====================
-@bot.tree.command(name="clear", description="清除訊息（1-200）", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def clear(inter: discord.Interaction, amount: app_commands.Range[int,1,200]):
-    await inter.response.defer(ephemeral=True)
-    deleted = await inter.channel.purge(limit=amount)
-    await inter.followup.send(f"🧹 已刪除 {len(deleted)} 則訊息", ephemeral=True)
-
-@bot.tree.command(name="kick", description="踢出成員", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def kick(inter: discord.Interaction, member: discord.Member, reason: str = "無理由"):
-    await member.kick(reason=reason)
-    await inter.response.send_message(f"👢 {member.display_name} 已被踢出（{reason}）")
-
-@bot.tree.command(name="ban", description="封鎖成員", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def ban(inter: discord.Interaction, member: discord.Member, reason: str = "無理由"):
-    await member.ban(reason=reason)
-    await inter.response.send_message(f"⛔ {member.display_name} 已被封鎖（{reason}）")
-
-@bot.tree.command(name="unban", description="解除封鎖（輸入使用者 ID）", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def unban(inter: discord.Interaction, user_id: str):
-    try:
-        user = await bot.fetch_user(int(user_id))
-        await inter.guild.unban(user)
-        await inter.response.send_message(f"✅ 已解除封鎖：{user}")
-    except Exception:
-        await inter.response.send_message("❌ 解除封鎖失敗，請確認 ID")
-
-@bot.tree.command(name="mute", description="禁言用戶（秒）", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def mute(inter: discord.Interaction, member: discord.Member, seconds: app_commands.Range[int,10,604800]):
-    until = datetime.now(timezone.utc) + timedelta(seconds=int(seconds))
-    await member.edit(communication_disabled_until=until)
-    await inter.response.send_message(f"🔇 {member.display_name} 已被禁言 {seconds} 秒")
-
-@bot.tree.command(name="unmute", description="解除禁言", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def unmute(inter: discord.Interaction, member: discord.Member):
-    await member.edit(communication_disabled_until=None)
-    await inter.response.send_message(f"🔊 {member.display_name} 已解除禁言")
-
-@bot.tree.command(name="slowmode", description="設定頻道慢速模式（秒，0 代表關閉）", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def slowmode(inter: discord.Interaction, seconds: app_commands.Range[int,0,21600]):
-    await inter.channel.edit(slowmode_delay=seconds)
-    await inter.response.send_message(f"🐢 已設定慢速模式：{seconds} 秒")
-
-@bot.tree.command(name="nick", description="修改成員暱稱", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def nick(inter: discord.Interaction, member: discord.Member, new_nick: str):
-    await member.edit(nick=new_nick)
-    await inter.response.send_message(f"✏️ {member.display_name} 的暱稱已改為 {new_nick}")
-
-# ===================== 經濟 / 等級 / 權限 / 票務管理 =====================
-@bot.tree.command(name="manage_currency", description="管理使用者貨幣", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def manage_currency(inter: discord.Interaction, user: discord.Member, amount: int):
-    uid = str(user.id)
-    state["currency"][uid] = state["currency"].get(uid, 0) + amount
-    save_json(CURRENCY_FILE, state["currency"])
-    await inter.response.send_message(f"✅ {user.mention} 的餘額已更新為 {state['currency'][uid]}")
-
-@bot.tree.command(name="manage_level", description="管理使用者等級", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def manage_level(inter: discord.Interaction, user: discord.Member, level: int):
-    uid = str(user.id)
-    state["levels"][uid] = state["levels"].get(uid, {"xp":0,"level":1})
-    state["levels"][uid]["level"] = level
-    save_json(LEVEL_FILE, state["levels"])
-    await inter.response.send_message(f"✅ {user.mention} 的等級已設定為 {level}")
-
-@bot.tree.command(name="manage_warning", description="管理使用者警告", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def manage_warning(inter: discord.Interaction, user: discord.Member, add: int = 1):
-    uid = str(user.id)
-    state["warnings"][uid] = state["warnings"].get(uid, 0) + add
-    save_json(WARN_FILE, state["warnings"])
-    await inter.response.send_message(f"⚠️ {user.mention} 現在有 {state['warnings'][uid]} 次警告")
-
-@bot.tree.command(name="toggle_feature", description="開啟或關閉使用者功能權限", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def toggle_feature(inter: discord.Interaction, user: discord.Member, enable: bool):
-    state["feature_perms"][str(user.id)] = enable
-    save_json(PERM_FILE, state["feature_perms"])
-    await inter.response.send_message(f"✅ {user.mention} 功能權限已 {'開啟' if enable else '關閉'}")
-
-@bot.tree.command(name="manage_ticket", description="管理票券（重置擁有者）", guild=discord.Object(id=GUILD_ID))
-@require_admin()
-async def manage_ticket(inter: discord.Interaction, ticket_id: str, user: discord.Member = None):
-    ticket = state["tickets"].get(ticket_id)
-    if not ticket:
-        await inter.response.send_message("❌ 找不到票券", ephemeral=True)
-        return
-    ticket["owner"] = str(user.id) if user else None
-    save_json(TICKET_FILE, state["tickets"])
-    await inter.response.send_message(f"🎫 票券 {ticket['name']} (ID:{ticket_id}) 已更新擁有者")
-
-# ===================== 猜數字指令 =====================
-@bot.tree.command(name="guess_number", description="開始猜數字遊戲", guild=discord.Object(id=GUILD_ID))
+# --------- Economy & Daily & Work ---------
+@bot.tree.command(name='balance', description='查看你的金錢', guild=discord.Object(id=GUILD_ID))
 @require_feature_permission()
-async def guess_number(inter: discord.Interaction, max_number: int = 100):
-    state["guess_games"][inter.channel.id] = random.randint(1, max_number)
-    await inter.response.send_message(f"🎲 已開始猜數字遊戲（1~{max_number}），快猜吧！")
+async def balance(inter: discord.Interaction, member: discord.Member | None = None):
+    m = member or inter.user
+    uid = str(m.id)
+    ensure_user(uid)
+    await inter.response.send_message(f'💰 {m.display_name} 的金錢：{USERS[uid]["money"]}')
 
-# ===================== 測試 / Ping =====================
-@bot.tree.command(name="ping", description="機器人延遲測試", guild=discord.Object(id=GUILD_ID))
-async def ping(inter: discord.Interaction):
-    await inter.response.send_message(f"🏓 Pong! 延遲: {round(bot.latency*1000)}ms")
 
-# ===================== Flask 監控 =====================
-app = Flask("")
+@bot.tree.command(name='work', description='工作賺錢（掃地或寫作業）', guild=discord.Object(id=GUILD_ID))
+@require_feature_permission()
+async def work(inter: discord.Interaction):
+    uid = str(inter.user.id)
+    ensure_user(uid)
+    earn = random.randint(20, 150)
+    USERS[uid]['money'] += earn
+    USERS[uid]['xp'] += random.randint(5, 25)
+    save_state()
+    await inter.response.send_message(f'✅ {inter.user.display_name} 工作獲得 {earn} 金幣')
 
-@app.route("/")
-def home():
-    return "Bot is running."
 
-def run_flask():
-    app.run(host="0.0.0.0", port=8080)
+@bot.tree.command(name='daily', description='每日領取獎勵', guild=discord.Object(id=GUILD_ID))
+@require_feature_permission()
+async def daily(inter: discord.Interaction):
+    uid = str(inter.user.id)
+    today = datetime.utcnow().date().isoformat()
+    last = DAILY.get(uid)
+    if last == today:
+        await inter.response.send_message('⏳ 你今天已領取過每日獎勵', ephemeral=True)
+        return
+    ensure_user(uid)
+    gain = 100
+    USERS[uid]['money'] += gain
+    DAILY[uid] = today
+    save_state()
+    await inter.response.send_message(f'🎁 已領取每日 {gain} 金幣')
 
-threading.Thread(target=run_flask).start()
+# --------- Transfer with confirmation ---------
+class PayConfirmView(discord.ui.View):
+    def __init__(self, payer_id: int, target_id: int, amount: int):
+        super().__init__(timeout=60)
+        self.payer_id = payer_id
+        self.target_id = target_id
+        self.amount = amount
 
-# ===================== 啟動 Bot =====================
-bot.run(TOKEN)
+    @discord.ui.button(label='Confirm', style=discord.ButtonStyle.green)
+    async def confirm(self, inter: discord.Interaction, button: discord.ui.Button):
+        if inter.user.id != self.payer_id:
+            await inter.response.send_message('只可以付款者本人按確認', ephemeral=True)
+            return
+        payer = str(self.payer_id)
+        target = str(self.target_id)
+        if USERS.get(payer, {}).get('money', 0) < self.amount:
+            await inter.response.send_message('餘額不足', ephemeral=True)
+            return
+        USERS[payer]['money'] -= self.amount
+        ensure_user(target)
+        USERS[target]['money'] += self.amount
+        save_state()
+        await inter.response.edit_message(content=f'💸 轉帳成功：{self.amount} 金幣 已轉給 <@{self.target_id}>', view=None)
+
+    @discord.ui.button(label='Cancel', style=discord.ButtonStyle.red)
+    async def cancel(self, inter: discord.Interaction, button: discord.ui.Button):
+        if inter.user.id != self.payer_id:
+            await inter.response.send_message('只可以付款者本人按取消', ephemeral=True)
+            return
+        await inter.response.edit_message(content='❌ 轉帳已取消', view=None)
+
+
+@bot.tree.command(name='pay', description='轉帳給他人', guild=discord.Object(id=GUILD_ID))
+@require_feature_permission()
+async def pay(inter: discord.Interaction, target: discord.Member, amount: int):
+    payer = str(inter.user.id)
+    ensure_user(payer)
+    if amount <= 0:
+        await inter.response.send_message('金額需大於 0', ephemeral=True)
+        return
+    if USERS[payer]['money'] < amount:
+        await inter.response.send_message('餘額不足', ephemeral=True)
+        return
+    view = PayConfirmView(inter.user.id, target.id, amount)
+    await inter.response.send_message(f'請確認是否要轉帳 {amount} 金幣 給 {target.display_name}', view=view, ephemeral=True)
+
+# --------- Tickets & Lottery (button-driven) ---------
+class LotteryView(discord.ui.View):
+    def __init__(self, cost: int = 10):
+        super().__init__(timeout=None)
+        self.cost = cost
+
+    @discord.ui.button(label='Join Lottery', style=discord.ButtonStyle.primary, custom_id='lottery_join')
+    async def join(self, inter: discord.Interaction, button: discord.ui.Button):
+        uid = str(inter.user.id)
+        ensure_user(uid)
+        if USERS[uid]['money'] < self.cost:
+            await inter.response.send_message('金幣不足參加抽獎', ephemeral=True)
+            return
+        USERS[uid]['money'] -= self.cost
+        # simple prize
+        roll = random.random()
+        if roll < 0.05:
+            prize = 1000
+        elif roll < 0.25:
+            prize = 200
+        elif roll < 0.6:
+            prize = 50
+        else:
+            prize = 0
+        USERS[uid]['money'] += prize
+        save_state()
+        if prize > 0:
+            await inter.response.send_message(f'🎉 恭喜！抽中 {prize} 金幣', ephemeral=True)
+        else:
+            await inter.response.send_message('未中獎，下次再試', ephemeral=True)
+
+
+@bot.tree.command(name='lottery', description='參加抽獎（按鈕）', guild=discord.Object(id=GUILD_ID))
+@require_feature_permission()
+async def lottery_cmd(inter: discord.Interaction):
+    view = LotteryView(cost=10)
+    await inter.response.send_message('按下 Join Lottery 參加（費用 10 金幣）', view=view, ephemeral=True)
+
+# ticket claim
+@bot.tree.command(name='ticket', description='領取票券', guild=discord.Object(id=GUILD_ID))
+@require_feature_permission()
+async def ticket_cmd(inter: discord.Interaction):
+    uid = str(inter.user.id)
+    ensure_user(uid)
+    USERS[uid]['tickets'] += 1
+    save_state()
+    await inter.response.send_message('🎟️ 已領取 1 張票券', ephemeral=True)
+
+# --------- Warning system (auto-mute after 5 warnings) ---------
+@bot.tree.command(name='warn', description='警告用戶', guild=discord.Object(id=GUILD_ID))
+@require_admin()
+async def warn_cmd(inter: discord.Interaction, member: discord.Member, reason: str):
+    uid = str(member.id)
+    entry = f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} - {reason} - by {inter.user.display_name}"
+    WARNINGS.setdefault(uid, []).append(entry)
+    save_state()
+    count = len(WARNINGS[uid])
+    # DM user
+    try:
+        await member.sen
