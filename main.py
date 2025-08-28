@@ -353,8 +353,7 @@ async def warnings_cmd(inter: discord.Interaction, member: discord.Member):
         await inter.response.send_message(f'✅ {member.display_name} 沒有任何警告')
     else:
         text = ''.join(logs[-20:])
-        await inter.response.send_message(f'⚠️ {member.display_name} 的警告紀錄:
-{text}', ephemeral=True)
+        await inter.response.send_message(f'⚠️ {member.display_name} 的警告紀錄:{text}', ephemeral=True)
 
 
 @bot.tree.command(name='reset_warnings', description='重置警告（管理）', guild=discord.Object(id=GUILD_ID))
