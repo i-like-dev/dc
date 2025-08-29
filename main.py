@@ -203,11 +203,11 @@ async def profile(inter: discord.Interaction, member: discord.Member | None = No
     ensure_user(uid)
     items = ', '.join([f"{k}x{v}" for k, v in USERS[uid]['items'].items()]) or '無'
     await inter.response.send_message(f"👤 {m.display_name}
-💰 金幣: {USERS[uid]['money']}
-⭐ 等級: {USERS[uid]['level']} (XP {USERS[uid]['xp']})
-🎟️ 票券: {USERS[uid]['tickets']}
-🎁 道具: {items}"
-    )
+    💰 金幣: {USERS[uid]['money']}
+    ⭐ 等級: {USERS[uid]['level']} (XP {USERS[uid]['xp']})
+    🎟️ 票券: {USERS[uid]['tickets']}
+    🎁 道具: {items}"
+        )
 
 @bot.tree.command(name='leaderboard', description='金錢排行榜（前 10）', guild=discord.Object(id=GUILD_ID))
 @require_feature_permission()
