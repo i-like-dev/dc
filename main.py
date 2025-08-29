@@ -218,8 +218,7 @@ async def leaderboard(inter: discord.Interaction):
         member = inter.guild.get_member(int(uid))
         name = member.display_name if member else uid
         lines.append(f"#{i} {name} — {ud.get('money',0)} 金幣")
-    await inter.response.send_message('
-'.join(lines) or '目前沒有資料')
+    await inter.response.send_message(''.join(lines) or '目前沒有資料')
 
 # --- work（掃地/寫作業出題）---
 @bot.tree.command(name='work', description='工作賺錢（掃地/寫作業）', guild=discord.Object(id=GUILD_ID))
