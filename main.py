@@ -184,8 +184,7 @@ async def gen_math_questions(n: int) -> List[dict]:
 async def help_cmd(inter: discord.Interaction):
     cmds = bot.tree.get_commands(guild=discord.Object(id=GUILD_ID))
     lines = [f"/{c.name} — {c.description}" for c in cmds]
-    await inter.response.send_message('
-'.join(['📜 指令清單:'] + lines), ephemeral=True)
+    await inter.response.send_message(''.join(['📜 指令清單:'] + lines), ephemeral=True)
 
 # ----- Economy / Profile -----
 @bot.tree.command(name='balance', description='查看你的金錢/等級', guild=discord.Object(id=GUILD_ID))
