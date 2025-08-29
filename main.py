@@ -426,8 +426,7 @@ async def warnings_cmd(inter: discord.Interaction, member: discord.Member):
     if not logs:
         await inter.response.send_message(f'✅ {member.display_name} 沒有任何警告')
     else:
-        text = '
-'.join(logs[-20:])
+        text = ''.join(logs[-20:])
         await inter.response.send_message(f'⚠️ {member.display_name} 的警告紀錄:
 {text}', ephemeral=True)
 
