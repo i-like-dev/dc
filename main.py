@@ -239,8 +239,7 @@ async def work(inter: discord.Interaction, questions: int = 0):
     else:
         # 掃地：有機率重複髒污（演示文字）
         repeat = random.choice([True, False])
-        detail = "
-掃地完成！" + ("（又弄髒了再清一次✔）" if repeat else '')
+        detail = "掃地完成！" + ("（又弄髒了再清一次✔）" if repeat else '')
 
     levelup = ''
     while USERS[uid]['xp'] >= USERS[uid]['level'] * 100:
