@@ -202,8 +202,7 @@ async def profile(inter: discord.Interaction, member: discord.Member | None = No
     uid = str(m.id)
     ensure_user(uid)
     items = ', '.join([f"{k}x{v}" for k, v in USERS[uid]['items'].items()]) or '無'
-    await inter.response.send_message(
-        f"👤 {m.display_name}
+    await inter.response.send_message(f"👤 {m.display_name}
 💰 金幣: {USERS[uid]['money']}
 ⭐ 等級: {USERS[uid]['level']} (XP {USERS[uid]['xp']})
 🎟️ 票券: {USERS[uid]['tickets']}
