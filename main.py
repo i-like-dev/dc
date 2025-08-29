@@ -235,9 +235,7 @@ async def work(inter: discord.Interaction, questions: int = 0):
     detail = ''
     if job == '寫作業':
         qs = await gen_math_questions(questions if questions>0 else random.randint(3,5))
-        detail = "
-" + '
-'.join([f"➤ {q['q']} 答案: {q['a']}" for q in qs])
+        detail = "" + ''.join([f"➤ {q['q']} 答案: {q['a']}" for q in qs])
     else:
         # 掃地：有機率重複髒污（演示文字）
         repeat = random.choice([True, False])
