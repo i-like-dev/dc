@@ -245,8 +245,7 @@ async def work(inter: discord.Interaction, questions: int = 0):
     while USERS[uid]['xp'] >= USERS[uid]['level'] * 100:
         USERS[uid]['xp'] -= USERS[uid]['level'] * 100
         USERS[uid]['level'] += 1
-        levelup += f"
-🎉 升級到 {USERS[uid]['level']} 級！"
+        levelup += f"🎉 升級到 {USERS[uid]['level']} 級！"
 
     save_all()
     await inter.response.send_message(f"✅ {inter.user.display_name}{job}獲得 {earn} 金幣、{xp} XP{levelup}{detail}")
